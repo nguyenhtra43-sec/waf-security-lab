@@ -1,0 +1,25 @@
+services:
+  # Lớp ứng dụng mục tiêu
+  vulnerable-web:
+    image: vulnerables/web-dvwa
+    container_name: dvwa-target
+    restart: always
+    environment:
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=pass
+
+  # Lớp bảo vệ (WAF)
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waf-server
+    ports:
+      - "8080:8080" # Ánh xạ cổng 8080 của Host vào 8080 của Container
+    environment:
+      - BACKEND=http://dvwa-target:80 # Trỏ luồng traffic về ứng dụng
+      - PROXY_SSL=off
+      - PORT=8080 # Lệnh quan trọng để Nginx bên trong đổi cổng lắng nghe
+      - PARANOIA=1 # Mức độ kiểm soát nghiêm ngặt cơ bản
+      - ANOMALY_INBOUND_THRESHOLD=5 # Ngưỡng điểm để chặn tấn công
+      - MODSEC_RULE_ENGINE=on
+    depends_on:
+      - vulnerable-web
