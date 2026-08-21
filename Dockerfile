@@ -1,1 +1,1 @@
-FROM owasp/modsecurity:3-nginx 
+FROM owasp/modsecurity:crs-nginx 
