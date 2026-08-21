@@ -6,5 +6,9 @@ ENV PARANOIA=1
 
 COPY default.conf /etc/nginx/templates/conf.d/default.conf.template
 
-# Ép trực tiếp chế độ Blocking vào file override cấu hình của ModSecurity
+# Chuyển sang root để tạo file override
+USER root
 RUN echo "SecRuleEngine On" > /etc/nginx/templates/modsecurity.d/modsecurity-override.conf.template
+
+# Chuyển lại user mặc định của image
+USER nginx
