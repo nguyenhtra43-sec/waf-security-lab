@@ -1,10 +1,13 @@
 FROM owasp/modsecurity-crs:nginx
 
-# Cấu hình WAF Blocking Mode
+# Thiết lập biến môi trường
 ENV MODSEC_RULE_ENGINE=On \
-    MODSEC_REQ_BODY_ACCESS=On \
     ANOMALY_INBOUND=5 \
     ANOMALY_OUTBOUND=4
 
-# Copy cấu hình Nginx vào vị trí chính thức
+# Ghi đè trực tiếp SecRuleEngine On vào file cấu hình chính của ModSecurity
+RUN sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/nginx/modsecurity.d/modsecurity-override.conf.template || true
+RUN echo "SecRuleEngine On" >> /etc/nginx/modsecurity.d/modsecurity-override.conf.template
+
+# Copy file cấu hình nginx
 COPY config/nginx.conf /etc/nginx/templates/conf.d/default.conf.template
