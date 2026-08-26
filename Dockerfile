@@ -1,7 +1,6 @@
 FROM owasp/modsecurity-crs:nginx
 
-# Bật chế độ chặn (Blocking mode) cho ModSecurity
-ENV MODSEC_RULE_ENGINE=on \
+ENV MODSEC_RULE_ENGINE=On \
     ANOMALY_INBOUND=5 \
     ANOMALY_OUTBOUND=4 \
     PARANOIA=1 \
