@@ -1,6 +1,7 @@
 FROM owasp/modsecurity-crs:nginx
 
 ENV MODSEC_RULE_ENGINE=On \
+    MODSEC_REQ_BODY_ACCESS=On \
     ANOMALY_INBOUND=5 \
     ANOMALY_OUTBOUND=4 \
     PARANOIA=1 \
