@@ -1,13 +1,11 @@
 FROM owasp/modsecurity-crs:nginx
 
-# Thiết lập biến môi trường
+# Cấu hình BẬT CHẶN chuẩn đét cho OWASP CRS v4
 ENV MODSEC_RULE_ENGINE=On \
+    MODSEC_REQ_BODY_ACCESS=On \
+    MODSEC_AUDIT_ENGINE="RelevantOnly" \
     ANOMALY_INBOUND=5 \
     ANOMALY_OUTBOUND=4
 
-# Ghi đè trực tiếp SecRuleEngine On vào file cấu hình chính của ModSecurity
-RUN sed -i 's/SecRuleEngine DetectionOnly/SecRuleEngine On/' /etc/nginx/modsecurity.d/modsecurity-override.conf.template || true
-RUN echo "SecRuleEngine On" >> /etc/nginx/modsecurity.d/modsecurity-override.conf.template
-
-# Copy file cấu hình nginx
+# Copy cấu hình Nginx
 COPY config/nginx.conf /etc/nginx/templates/conf.d/default.conf.template
