@@ -1,11 +1,7 @@
-FROM owasp/modsecurity-crs:nginx
+# Sử dụng chính xác Tag bản build ổn định này
+FROM owasp/modsecurity-crs:3.3.10-nginx-202608131208
 
-# Ép Container chạy với quyền Root để bỏ qua lỗi Permission
-USER root
-
-# Bật ModSecurity và đặt Port
 ENV MODSEC_RULE_ENGINE=On
 ENV PORT=80
 
-# Copy cấu hình custom của bạn vào
 COPY config/nginx.conf /etc/nginx/templates/conf.d/default.conf.template
