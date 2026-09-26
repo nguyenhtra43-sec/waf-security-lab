@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="vi" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise WAF Security Lab | Nginx + ModSecurity v3 & DVWA</title>
+  <meta name="description" content="Mô hình phòng thủ Web Application Firewall (WAF) tầng ứng dụng (L7) sử dụng Nginx, ModSecurity v3 và OWASP Core Rule Set (CRS) bảo vệ ứng dụng DVWA trước SQLi, XSS và Brute Force.">
+  <meta name="author" content="Nguyen Huong Tra - nguyenhtra43-sec">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            cyber: {
+              dark: '#0a0f1d',
+              card: '#111827',
+              border: '#1f2937',
+              cyan: '#06b6d4',
+              emerald: '#10b981',
+              crimson: '#ef4444',
+              amber: '#f59e0b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      font-family: 'Inter', sans-serif;
+    }
+    .code-terminal {
+      background-color: #070a12;
+      border: 1px solid #1e293b;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .glow-cyan {
+      box-shadow: 0 0 25px -5px rgba(6, 182, 212, 0.25);
+    }
+    .glow-emerald {
+      box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+    }
+    .glow-crimson {
+      box-shadow: 0 0 25px -5px rgba(239, 68, 68, 0.25);
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+  </style>
+</head>
+<body class="bg-[#0b0f19] text-slate-200 antialiased selection:bg-cyan-500/30 selection:text-cyan-300">
+
+  <!-- NAVIGATION BAR -->
+  <nav class="sticky top-0 z-50 bg-[#0b0f19]/90 backdrop-blur-md border-b border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-lg bg-gradient-to-tr from-cyan-600 to-emerald-500 flex items-center justify-center text-white shadow-lg shadow-cyan-500/20">
+            <i class="fa-solid fa-shield-halved text-xl"></i>
+          </div>
+          <div>
+            <span class="text-lg font-bold text-white tracking-wide">WAF Security Lab</span>
+            <span class="hidden sm:inline-block ml-2 px-2 py-0.5 text-xs font-mono font-medium rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800">
+              ModSecurity v3 + CRS
+            </span>
+          </div>
+        </div>
+
+        <div class="hidden md:flex items-center space-x-6 text-sm font-medium text-slate-300">
+          <a href="#simulator" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-flask-vial text-xs"></i> Phòng Lab Demo
+          </a>
+          <a href="#logs" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-terminal text-xs"></i> Nhật Ký Terminal
+          </a>
+          <a href="#architecture" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-diagram-project text-xs"></i> Kiến Trúc
+          </a>
+          <a href="#evidence" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-images text-xs"></i> Bằng Chứng Lab
+          </a>
+          <a href="#code" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+            <i class="fa-solid fa-code text-xs"></i> Cấu Hình
+          </a>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <a href="https://github.com/nguyenhtra43-sec/waf-security-lab" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-2 px-4 py-2 text-xs sm:text-sm font-semibold text-slate-900 bg-gradient-to-r from-cyan-400 to-emerald-400 rounded-lg hover:from-cyan-300 hover:to-emerald-300 transition-all shadow-md shadow-cyan-500/10 hover:shadow-cyan-500/25">
+            <i class="fa-brands fa-github text-base"></i>
+            <span>GitHub Repo</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HERO SECTION -->
+  <header class="relative overflow-hidden pt-12 pb-16 lg:pt-20 lg:pb-24 border-b border-slate-800/60 bg-gradient-to-b from-[#0e1628] via-[#0b0f19] to-[#0b0f19]">
+    <div class="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:16px_16px] opacity-30 pointer-events-none"></div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
+      <div class="text-center max-w-3xl mx-auto">
+        
+        <!-- Live Status Pill -->
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700/80 text-xs font-mono text-slate-300 mb-6 shadow-inner">
+          <span class="flex h-2 w-2 relative">
+            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+            <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          </span>
+          <span class="text-emerald-400 font-semibold">Active Lab Defense</span>
+          <span class="text-slate-500">|</span>
+          <span>OWASP CRS v3.3.10 Inbound Threshold: 5</span>
+        </div>
+
+        <h1 class="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight sm:leading-tight mb-4">
+          Enterprise Web Application Firewall <br class="hidden sm:inline">
+          <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-teal-300 to-emerald-400">
+            & Cyber Security Lab
+          </span>
+        </h1>
+
+        <p class="text-base sm:text-lg text-slate-400 mb-8 leading-relaxed">
+          Hệ thống tường lửa ứng dụng web (L7) được triển khai bằng <span class="text-cyan-300 font-medium">Nginx Reverse Proxy</span> và engine <span class="text-emerald-300 font-medium">ModSecurity v3</span> cùng bộ quy tắc bảo vệ <span class="text-white font-medium">OWASP Core Rule Set</span>. Bảo vệ mục tiêu <span class="text-amber-300 font-medium">DVWA</span> trước 3 kịch bản tấn công: SQL Injection, XSS và Brute Force.
+        </p>
+
+        <!-- CTA Buttons -->
+        <div class="flex flex-wrap items-center justify-center gap-4">
+          <a href="#simulator" class="px-6 py-3 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/25 flex items-center gap-2">
+            <i class="fa-solid fa-play"></i> Trải Nghiệm Demo Tương Tác
+          </a>
+          <a href="#logs" class="px-6 py-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-sm transition-all flex items-center gap-2">
+            <i class="fa-solid fa-terminal text-cyan-400"></i> Xem Logs ModSecurity
+          </a>
+          <a href="#architecture" class="px-6 py-3 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-slate-800 font-medium text-sm transition-all flex items-center gap-2">
+            <i class="fa-solid fa-circle-nodes text-emerald-400"></i> Sơ Đồ Kiến Trúc
+          </a>
+        </div>
+
+        <!-- Badges Stack -->
+        <div class="mt-10 flex flex-wrap justify-center items-center gap-2 pt-6 border-t border-slate-800/70 text-xs font-mono">
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-400 font-semibold">Docker Compose</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-400 font-semibold">Nginx Reverse Proxy</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-blue-400 font-semibold">ModSecurity v3</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-purple-400 font-semibold">OWASP CRS 3.3.x</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-400 font-semibold">DVWA (Vulnerable Target)</span>
+          <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-rose-400 font-semibold">Python Automation</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- AUTHOR & PROJECT OVERVIEW STRIP -->
+  <section class="bg-slate-900/60 border-b border-slate-800 py-6">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-6 text-sm">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400">
+            <i class="fa-solid fa-user-shield text-lg"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Tác giả / Nghiên cứu</div>
+            <div class="font-bold text-white">Nguyễn Hương Trà</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-emerald-400">
+            <i class="fa-brands fa-github text-lg"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">GitHub Profile</div>
+            <a href="https://github.com/nguyenhtra43-sec" target="_blank" class="font-bold text-cyan-400 hover:underline">@nguyenhtra43-sec</a>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-purple-400">
+            <i class="fa-solid fa-cloud text-lg"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Môi trường xác thực</div>
+            <div class="font-bold text-white">Google Cloud Shell & Docker</div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400">
+            <i class="fa-solid fa-gauge-high text-lg"></i>
+          </div>
+          <div>
+            <div class="text-xs text-slate-400">Cấu hình bảo vệ</div>
+            <div class="font-bold text-white">Paranoia Level 1 | Score: 5</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN INTERACTIVE DEMO SIMULATOR -->
+  <section id="simulator" class="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto mb-12">
+      <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-950/70 border border-cyan-800/80 px-3 py-1 rounded-full">
+        Interactive Sandbox
+      </span>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-white mt-3">
+        Mô Phỏng 3 Kịch Bản Tấn Công & Phòng Thủ
+      </h2>
+      <p class="text-slate-400 text-sm sm:text-base mt-2">
+        Thử nghiệm trực tiếp các kỹ thuật tấn công phổ biến trong OWASP Top 10 và quan sát sự khác biệt khi <strong class="text-crimson-400">TẮT WAF</strong> (hệ thống bị khai thác) so với khi <strong class="text-emerald-400">BẬT WAF</strong> (chặn đứng 403 Forbidden).
+      </p>
+    </div>
+
+    <!-- Simulator Container -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden">
+      
+      <!-- Top Control Bar -->
+      <div class="bg-slate-950 p-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
+        
+        <!-- Scenario Tabs -->
+        <div class="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800">
+          <button id="tab-sqli" onclick="switchScenario('sqli')"
+                  class="scenario-tab px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all bg-cyan-600 text-white shadow">
+            <i class="fa-solid fa-database mr-1.5"></i> 1. SQL Injection
+          </button>
+          <button id="tab-xss" onclick="switchScenario('xss')"
+                  class="scenario-tab px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
+            <i class="fa-solid fa-code mr-1.5"></i> 2. Cross-Site Scripting (XSS)
+          </button>
+          <button id="tab-brute" onclick="switchScenario('brute')"
+                  class="scenario-tab px-4 py-2 rounded-lg text-xs sm:text-sm font-semibold transition-all text-slate-400 hover:text-white">
+            <i class="fa-solid fa-key mr-1.5"></i> 3. Vét Cạn (Brute Force)
+          </button>
+        </div>
+
+        <!-- WAF Master Toggle -->
+        <div class="flex items-center gap-3 bg-slate-900 px-4 py-2 rounded-xl border border-slate-800">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-300">Trạng Thái Tường Lửa (WAF):</span>
+          <button id="waf-toggle-btn" onclick="toggleWAF()" 
+                  class="relative inline-flex h-7 w-14 items-center rounded-full transition-colors focus:outline-none bg-emerald-600">
+            <span id="waf-toggle-circle" class="inline-block h-5 w-5 transform rounded-full bg-white transition-transform translate-x-8"></span>
+          </button>
+          <span id="waf-status-text" class="text-xs font-mono font-bold text-emerald-400">
+            BẬT (CRS Active)
+          </span>
+        </div>
+      </div>
+
+      <!-- Simulator Workspace: Left Controls & Right Output -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-0">
+        
+        <!-- LEFT PANEL: Attack Configuration -->
+        <div class="lg:col-span-5 p-6 border-b lg:border-b-0 lg:border-r border-slate-800 bg-[#0d1322]">
+          
+          <!-- Scenario Info Badge -->
+          <div class="mb-4">
+            <div id="scenario-title" class="text-base font-bold text-white flex items-center gap-2">
+              <i class="fa-solid fa-database text-cyan-400"></i> Kịch bản 1: SQL Injection (SQLi)
+            </div>
+            <p id="scenario-desc" class="text-xs text-slate-400 mt-1">
+              Chèn câu lệnh SQL bất hợp pháp vào tham số `id` nhằm vô hiệu hóa mệnh đề WHERE và trích xuất trái phép cơ sở dữ liệu tài khoản người dùng từ DVWA.
+            </p>
+          </div>
+
+          <!-- Payload Selection Form -->
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5">
+                Payload Mẫu Thử Nghiệm:
+              </label>
+              <div id="payload-presets" class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                <!-- Dynamically loaded presets -->
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                <span>Tham Số Truy Vấn (Custom Payload):</span>
+                <span id="target-endpoint" class="text-[11px] font-mono text-cyan-400">/vulnerabilities/sqli/?id=</span>
+              </label>
+              <div class="relative">
+                <input type="text" id="payload-input" 
+                       class="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                       value="%' OR '1'='1">
+              </div>
+            </div>
+
+            <!-- Target Details Box -->
+            <div class="p-3 bg-slate-950/80 rounded-lg border border-slate-800/80 text-xs font-mono space-y-1">
+              <div class="flex justify-between text-slate-400">
+                <span>Target Host:</span>
+                <span class="text-slate-200">http://localhost:8080 (DVWA via Proxy)</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Method:</span>
+                <span class="text-emerald-400 font-bold" id="http-method">GET</span>
+              </div>
+              <div class="flex justify-between text-slate-400">
+                <span>Rule Engine:</span>
+                <span class="text-purple-400" id="rule-inspect">REQUEST-942-APPLICATION-ATTACK-SQLI</span>
+              </div>
+            </div>
+
+            <!-- Launch Button -->
+            <button id="send-attack-btn" onclick="executeAttackSimulation()"
+                    class="w-full py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2">
+              <i class="fa-solid fa-paper-plane"></i>
+              <span>Gửi Yêu Cầu / Thực Thi Tấn Công</span>
+            </button>
+          </div>
+
+          <!-- ModSecurity Scoring Bar -->
+          <div class="mt-6 pt-5 border-t border-slate-800">
+            <div class="flex items-center justify-between text-xs font-mono mb-1.5">
+              <span class="text-slate-400">Điểm Đánh Giá Bất Thường (Anomaly Score):</span>
+              <span id="score-text" class="font-bold text-rose-400">11 / 5 (Vượt ngưỡng)</span>
+            </div>
+            <div class="w-full bg-slate-950 h-2.5 rounded-full overflow-hidden border border-slate-800">
+              <div id="score-bar" class="h-full bg-gradient-to-r from-amber-500 to-rose-600 transition-all duration-500" style="width: 100%;"></div>
+            </div>
+            <div class="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+              <span>0 (An toàn)</span>
+              <span>5 (Ngưỡng chặn ModSec)</span>
+              <span>15+ (Mức nguy hiểm cao)</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- RIGHT PANEL: Visual Response & Simulated DVWA -->
+        <div class="lg:col-span-7 p-6 bg-slate-950 flex flex-col justify-between">
+          
+          <!-- Response Header Bar -->
+          <div class="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-semibold text-slate-400">Phản hồi HTTP:</span>
+              <span id="status-badge" class="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800 flex items-center gap-1">
+                <i class="fa-solid fa-shield-halved"></i> 403 Forbidden
+              </span>
+            </div>
+            <div class="text-[11px] font-mono text-slate-400">
+              Latency: <span id="response-latency" class="text-slate-200">14ms</span> | Server: <span class="text-cyan-400">Nginx + ModSecurity</span>
+            </div>
+          </div>
+
+          <!-- Browser Window Simulation Mockup -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-inner flex-1 flex flex-col min-h-[350px]">
+            
+            <!-- Browser Mockup URL Bar -->
+            <div class="bg-slate-950 px-3 py-2 border-b border-slate-800 flex items-center gap-2 text-xs">
+              <div class="flex items-center gap-1.5">
+                <span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block"></span>
+                <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block"></span>
+              </div>
+              <div class="flex-1 bg-slate-900 px-3 py-1 rounded border border-slate-800 font-mono text-slate-400 truncate text-[11px] flex items-center justify-between">
+                <span id="mockup-url">http://localhost:8080/vulnerabilities/sqli/?id=%2527+OR+%271%27%3D%271&Submit=Submit</span>
+                <i class="fa-solid fa-lock text-slate-500 text-[10px]"></i>
+              </div>
+            </div>
+
+            <!-- Browser Content Render Area -->
+            <div id="mockup-content" class="p-4 flex-1 flex flex-col justify-center items-center font-sans overflow-auto custom-scrollbar">
+              
+              <!-- 403 Forbidden Shield Screen (Default when WAF is ON) -->
+              <div id="screen-blocked" class="text-center py-6 px-4">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-400 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-rose-900/30">
+                  <i class="fa-solid fa-ban"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-1">403 Forbidden - Access Denied</h3>
+                <p class="text-xs font-mono text-rose-300 mb-3">Tường Lửa Tầng Ứng Dụng (WAF) Đã Ngăn Chặn Yêu Cầu Này</p>
+                <div class="max-w-md mx-auto bg-slate-950 p-3 rounded-lg border border-slate-800 text-left text-xs font-mono space-y-1 text-slate-400">
+                  <div><strong class="text-slate-300">WAF Engine:</strong> ModSecurity v3 / OWASP CRS 3.3.10</div>
+                  <div><strong class="text-slate-300">Blocking Rule ID:</strong> <span class="text-amber-400 font-bold">949110</span> (Inbound Anomaly Score Exceeded)</div>
+                  <div><strong class="text-slate-300">Score Recorded:</strong> <span class="text-rose-400 font-bold">11</span> (Ngưỡng cho phép: 5)</div>
+                  <div><strong class="text-slate-300">Hành động:</strong> Giao dịch bị hủy ngay tại Phase 2 trước khi tới DVWA Backend.</div>
+                </div>
+              </div>
+
+              <!-- Vulnerable Data Leak Screen (Shown when WAF is OFF) -->
+              <div id="screen-vulnerable" class="hidden w-full text-left font-sans">
+                <!-- Will be updated dynamically for SQLi, XSS, Brute -->
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Bottom Action Helper -->
+          <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
+            <span><i class="fa-solid fa-circle-info text-cyan-400 mr-1"></i> Bấm "Trạng Thái Tường Lửa" phía trên để so sánh kết quả khi BẬT / TẮT WAF.</span>
+            <button onclick="scrollToTerminal()" class="text-cyan-400 hover:underline flex items-center gap-1">
+              Xem raw log <i class="fa-solid fa-arrow-down"></i>
+            </button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIVE TERMINAL / SOC LOG INSPECTOR -->
+  <section id="logs" class="py-12 bg-[#090d16] border-y border-slate-800/80">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
+        <div>
+          <span class="text-xs font-mono uppercase tracking-widest text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-3 py-1 rounded-full">
+            Security Operations Center (SOC)
+          </span>
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-white mt-3">
+            Terminal Giám Sát Nhật Ký ModSecurity Trực Tiếp
+          </h2>
+          <p class="text-slate-400 text-sm mt-1">
+            Bản mô phỏng chính xác lệnh thực thi trên Google Cloud Shell: <code class="text-cyan-300 bg-slate-800 px-1.5 py-0.5 rounded">docker logs waf-server | grep "944"</code>
+          </p>
+        </div>
+
+        <!-- Terminal Filter Buttons -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="filterLogs('all')" class="log-filter-btn px-3 py-1.5 rounded-lg text-xs font-mono font-medium bg-slate-800 text-white border border-slate-700 hover:bg-slate-700">
+            Tất cả Logs
+          </button>
+          <button onclick="filterLogs('sqli')" class="log-filter-btn px-3 py-1.5 rounded-lg text-xs font-mono font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800">
+            SQLi (Rule 942xxx)
+          </button>
+          <button onclick="filterLogs('xss')" class="log-filter-btn px-3 py-1.5 rounded-lg text-xs font-mono font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800">
+            XSS (Rule 941xxx)
+          </button>
+          <button onclick="filterLogs('brute')" class="log-filter-btn px-3 py-1.5 rounded-lg text-xs font-mono font-medium bg-slate-900 text-slate-400 border border-slate-800 hover:bg-slate-800">
+            Brute Force / Rate Limit
+          </button>
+          <button onclick="clearTerminalLogs()" class="px-3 py-1.5 rounded-lg text-xs font-mono font-medium text-rose-400 hover:bg-rose-950/50 border border-transparent hover:border-rose-900">
+            <i class="fa-solid fa-trash-can mr-1"></i> Xóa Màn Hình
+          </button>
+        </div>
+      </div>
+
+      <!-- Real CloudShell Terminal Mockup -->
+      <div class="code-terminal rounded-xl overflow-hidden shadow-2xl border border-slate-800">
+        <!-- Terminal Top Bar -->
+        <div class="bg-[#0f172a] px-4 py-2.5 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <span class="w-3 h-3 rounded-full bg-red-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500/80 inline-block"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500/80 inline-block"></span>
+            <span class="ml-2 text-xs font-mono text-slate-400">n9uy3nvu96@cloudshell:~/do_an_baomat (bash)</span>
+          </div>
+          <div class="flex items-center gap-3 text-xs font-mono text-slate-500">
+            <span>Container: <strong class="text-cyan-400">waf-server</strong></span>
+            <span>Port: <strong class="text-emerald-400">8080:8080</strong></span>
+          </div>
+        </div>
+
+        <!-- Terminal Prompt Line -->
+        <div class="p-4 bg-[#070a12] text-xs font-mono text-slate-300 border-b border-slate-900">
+          <span class="text-emerald-400">n9uy3nvu96@cloudshell</span>:<span class="text-cyan-400">~/do_an_baomat</span>$ 
+          <span class="text-white font-bold">docker logs -f waf-server | grep -E "ModSecurity|949110|403"</span>
+        </div>
+
+        <!-- Terminal Output Body -->
+        <div id="terminal-body" class="p-4 max-h-[380px] overflow-y-auto custom-scrollbar font-mono text-xs leading-relaxed space-y-3 bg-[#060910]">
+          <!-- Logs will be populated here -->
+        </div>
+
+        <!-- Interactive Quick Trigger in Terminal -->
+        <div class="p-3 bg-[#0d1322] border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+          <span class="text-slate-400"><i class="fa-solid fa-bolt text-amber-400 mr-1.5"></i> Thử nghiệm chèn lệnh nhanh vào WAF:</span>
+          <div class="flex items-center gap-2">
+            <button onclick="injectLog('sqli')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700">
+              curl "http://localhost:8080/?id='%20OR%20'1'='1"
+            </button>
+            <button onclick="injectLog('xss')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700">
+              curl "http://localhost:8080/?q=<script>alert(1)</script>"
+            </button>
+            <button onclick="injectLog('normal')" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700">
+              curl "http://localhost:8080/?id=1" (Hợp lệ)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SYSTEM ARCHITECTURE SECTION -->
+  <section id="architecture" class="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto mb-12">
+      <span class="text-xs font-mono uppercase tracking-widest text-purple-400 bg-purple-950/70 border border-purple-800/80 px-3 py-1 rounded-full">
+        Architectural Blueprint
+      </span>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-white mt-3">
+        Kiến Trúc Hệ Thống & Cơ Chế Phòng Thủ L7
+      </h2>
+      <p class="text-slate-400 text-sm sm:text-base mt-2">
+        Toàn bộ luồng truy cập được định tuyến qua lớp Proxy trung gian, phân tích dữ liệu 5 giai đoạn trước khi cho phép chạm tới DVWA.
+      </p>
+    </div>
+
+    <!-- 5-Phase Inspection Pipeline Diagram -->
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-3 mb-12">
+      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center relative">
+        <div class="w-8 h-8 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 flex items-center justify-center mx-auto mb-2 text-xs font-bold font-mono">
+          PHASE 1
+        </div>
+        <div class="text-xs font-bold text-white mb-1">Request Headers</div>
+        <p class="text-[11px] text-slate-400">Kiểm tra Method, User-Agent, URI, Host, và Cookie bất thường.</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-slate-900 border border-cyan-800/80 text-center relative shadow-lg shadow-cyan-950/40">
+        <div class="w-8 h-8 rounded-full bg-cyan-600 text-white flex items-center justify-center mx-auto mb-2 text-xs font-bold font-mono">
+          PHASE 2
+        </div>
+        <div class="text-xs font-bold text-cyan-300 mb-1">Request Body (Core)</div>
+        <p class="text-[11px] text-slate-400">So khớp regex, libinjection đối với dữ liệu POST/GET (Bắt SQLi, XSS).</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center relative">
+        <div class="w-8 h-8 rounded-full bg-purple-950 text-purple-400 border border-purple-800 flex items-center justify-center mx-auto mb-2 text-xs font-bold font-mono">
+          PHASE 3
+        </div>
+        <div class="text-xs font-bold text-white mb-1">Response Headers</div>
+        <p class="text-[11px] text-slate-400">Kiểm tra thông tin phản hồi từ Server (ẩn banner Nginx, Apache).</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center relative">
+        <div class="w-8 h-8 rounded-full bg-purple-950 text-purple-400 border border-purple-800 flex items-center justify-center mx-auto mb-2 text-xs font-bold font-mono">
+          PHASE 4
+        </div>
+        <div class="text-xs font-bold text-white mb-1">Response Body</div>
+        <p class="text-[11px] text-slate-400">Chặn rò rỉ mã lỗi cơ sở dữ liệu hoặc thông tin hệ thống nhạy cảm.</p>
+      </div>
+
+      <div class="p-4 rounded-xl bg-slate-900 border border-slate-800 text-center relative">
+        <div class="w-8 h-8 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center justify-center mx-auto mb-2 text-xs font-bold font-mono">
+          PHASE 5
+        </div>
+        <div class="text-xs font-bold text-white mb-1">Audit Logging</div>
+        <p class="text-[11px] text-slate-400">Ghi vết toàn bộ hành vi vi phạm vào tệp log phục vụ điều tra số (DFIR).</p>
+      </div>
+    </div>
+
+    <!-- Architecture Diagram Viewer Card -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+      <div class="flex flex-col lg:flex-row items-center gap-8">
+        
+        <!-- Left: Image Preview -->
+        <div class="lg:w-1/2 w-full">
+          <div class="rounded-xl overflow-hidden border border-slate-700/80 bg-slate-950 relative group cursor-pointer" onclick="openModal('images/architecture.jpg')">
+            <img src="images/architecture.jpg" alt="System Architecture Diagram" class="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white gap-2 font-medium text-sm">
+              <i class="fa-solid fa-magnifying-glass-plus text-cyan-400"></i> Phóng to sơ đồ
+            </div>
+          </div>
+          <p class="text-center text-xs text-slate-500 mt-2 font-mono">Hình 1: Sơ đồ triển khai Docker Compose giữa Nginx WAF và DVWA</p>
+        </div>
+
+        <!-- Right: Technical Highlights -->
+        <div class="lg:w-1/2 w-full space-y-4">
+          <h3 class="text-xl font-bold text-white">Thành Phần & Thông Số Kỹ Thuật</h3>
+          
+          <div class="space-y-3 text-sm">
+            <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-cyan-950 border border-cyan-800 flex items-center justify-center text-cyan-400 shrink-0 mt-0.5">
+                <i class="fa-solid fa-shield"></i>
+              </div>
+              <div>
+                <div class="font-semibold text-white">WAF Engine (ModSecurity v3 + CRS 3.3.10)</div>
+                <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  Được biên dịch trực tiếp vào Nginx. Thiết lập ở chế độ <strong class="text-slate-200">Anomaly Scoring Mode</strong> với <code class="text-cyan-400">ANOMALY_INBOUND_THRESHOLD=5</code>. Khi tổng điểm các vi phạm $\ge 5$, mã phản hồi 403 Forbidden sẽ được kích hoạt tức thì.
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-emerald-950 border border-emerald-800 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                <i class="fa-solid fa-network-wired"></i>
+              </div>
+              <div>
+                <div class="font-semibold text-white">Lớp Reverse Proxy (Nginx)</div>
+                <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  Lắng nghe ở cổng 8080 của Host, đóng vai trò cửa ngõ duy nhất. Chỉ chuyển tiếp các request sạch về container <code class="text-emerald-400">vulnerable-web:80</code>.
+                </p>
+              </div>
+            </div>
+
+            <div class="p-3.5 bg-slate-950/80 rounded-xl border border-slate-800 flex items-start gap-3">
+              <div class="w-8 h-8 rounded-lg bg-amber-950 border border-amber-800 flex items-center justify-center text-amber-400 shrink-0 mt-0.5">
+                <i class="fa-solid fa-bullseye"></i>
+              </div>
+              <div>
+                <div class="font-semibold text-white">Ứng Dụng Đích Mục Tiêu (DVWA)</div>
+                <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                  Ứng dụng PHP/MySQL chứa sẵn các lỗ hổng bảo mật chuẩn kiểm thử, được cô lập trong mạng nội bộ Docker và không mở cổng trực tiếp ra ngoài Internet.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- LAB EVIDENCE GALLERY -->
+  <section id="evidence" class="py-16 bg-[#090d16] border-t border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="text-center max-w-3xl mx-auto mb-12">
+        <span class="text-xs font-mono uppercase tracking-widest text-emerald-400 bg-emerald-950/70 border border-emerald-800/80 px-3 py-1 rounded-full">
+          Lab Proof & Screenshots
+        </span>
+        <h2 class="text-2xl sm:text-4xl font-extrabold text-white mt-3">
+          Ảnh Chụp Bằng Chứng Thực Tế Từ Google Cloud Shell
+        </h2>
+        <p class="text-slate-400 text-sm sm:text-base mt-2">
+          Ảnh chụp màn hình các giai đoạn tấn công và phòng thủ được ghi nhận thực tế trong quá trình làm đồ án.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        <!-- Image Card 1: SQLi Test Input -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg hover:border-cyan-600 transition-colors cursor-pointer group"
+             onclick="openModal('images/sqli_test.jpg')">
+          <div class="relative overflow-hidden aspect-video bg-slate-950">
+            <img src="images/sqli_test.jpg" alt="DVWA SQL Injection Test Input" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-cyan-950 text-cyan-400 text-[10px] font-mono border border-cyan-800">
+              Giai Đoạn Thử Nghiệm
+            </div>
+          </div>
+          <div class="p-4">
+            <h4 class="font-bold text-white text-sm mb-1">1. Nhập Chuỗi Tấn Công SQLi</h4>
+            <p class="text-xs text-slate-400">
+              Nhập payload <code class="text-cyan-400 font-mono">%' OR '1'='1</code> vào form User ID của DVWA trên Google Cloud Shell web preview.
+            </p>
+          </div>
+        </div>
+
+        <!-- Image Card 2: ModSec Block Log 403 -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg hover:border-rose-600 transition-colors cursor-pointer group"
+             onclick="openModal('images/modsec_log_403.jpg')">
+          <div class="relative overflow-hidden aspect-video bg-slate-950">
+            <img src="images/modsec_log_403.jpg" alt="ModSecurity Access Denied Log 403" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-rose-950 text-rose-400 text-[10px] font-mono border border-rose-800">
+              Chặn Thành Công (WAF ON)
+            </div>
+          </div>
+          <div class="p-4">
+            <h4 class="font-bold text-white text-sm mb-1">2. ModSecurity Chặn 403 & Log Điểm 11</h4>
+            <p class="text-xs text-slate-400">
+              ModSecurity ghi nhận <code class="text-rose-400 font-mono">Anomaly Score: 11</code>, kích hoạt Rule <code class="text-amber-400 font-mono">949110</code> chặn đứng HTTP 403.
+            </p>
+          </div>
+        </div>
+
+        <!-- Image Card 3: Vulnerable Dump -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg hover:border-amber-600 transition-colors cursor-pointer group"
+             onclick="openModal('images/sqli_vulnerable_dump.jpg')">
+          <div class="relative overflow-hidden aspect-video bg-slate-950">
+            <img src="images/sqli_vulnerable_dump.jpg" alt="SQL Injection Leaked Data" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300">
+            <div class="absolute top-2 left-2 px-2 py-0.5 rounded bg-amber-950 text-amber-400 text-[10px] font-mono border border-amber-800">
+              Khai Thác Khi Không Có WAF
+            </div>
+          </div>
+          <div class="p-4">
+            <h4 class="font-bold text-white text-sm mb-1">3. Toàn Bộ DB Bị Rò Rỉ (WAF OFF)</h4>
+            <p class="text-xs text-slate-400">
+              Khi không có WAF bảo vệ, hệ thống trả về 200 OK và rò rỉ danh sách tài khoản: <code class="text-slate-300 font-mono">admin, Gordon, Hack, Pablo, Bob</code>.
+            </p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- CODE & CONFIGURATION BROWSER -->
+  <section id="code" class="py-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="text-center max-w-3xl mx-auto mb-12">
+      <span class="text-xs font-mono uppercase tracking-widest text-cyan-400 bg-cyan-950/70 border border-cyan-800/80 px-3 py-1 rounded-full">
+        Configuration Repository
+      </span>
+      <h2 class="text-2xl sm:text-4xl font-extrabold text-white mt-3">
+        Mã Cấu Hình Dự Án Chuẩn Triển Khai
+      </h2>
+      <p class="text-slate-400 text-sm sm:text-base mt-2">
+        Các tệp cấu hình cốt lõi đã được kiểm thử và đóng gói sẵn trong Repository GitHub của đồ án.
+      </p>
+    </div>
+
+    <!-- Code Tab Card -->
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+      <!-- Tabs Header -->
+      <div class="bg-slate-950 p-3 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <button id="code-tab-compose" onclick="switchCode('compose')" 
+                  class="code-tab px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800">
+            docker-compose.yml
+          </button>
+          <button id="code-tab-nginx" onclick="switchCode('nginx')" 
+                  class="code-tab px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-400 hover:text-white">
+            config/nginx.conf
+          </button>
+          <button id="code-tab-python" onclick="switchCode('python')" 
+                  class="code-tab px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-400 hover:text-white">
+            scripts/test_security.py
+          </button>
+        </div>
+        <button onclick="copyCurrentCode()" class="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-mono flex items-center gap-1.5 border border-slate-700">
+          <i class="fa-regular fa-copy"></i> <span id="copy-btn-text">Sao chép code</span>
+        </button>
+      </div>
+
+      <!-- Code Content -->
+      <pre class="p-6 bg-[#070a12] text-xs font-mono text-slate-300 overflow-x-auto custom-scrollbar leading-relaxed"><code id="code-block"># Đang tải cấu hình...</code></pre>
+    </div>
+  </section>
+
+  <!-- QUICK DEPLOYMENT GUIDE -->
+  <section class="py-16 bg-[#090d16] border-t border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="max-w-3xl mx-auto">
+        <div class="text-center mb-10">
+          <h2 class="text-2xl sm:text-3xl font-extrabold text-white">Hướng Dẫn Khởi Chạy Nhanh Lab Bảo Mật</h2>
+          <p class="text-slate-400 text-sm mt-2">Dễ dàng chạy lại môi trường thực nghiệm trên Google Cloud Shell, VPS hoặc máy tính cá nhân.</p>
+        </div>
+
+        <div class="space-y-4">
+          <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="w-6 h-6 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 text-xs font-bold flex items-center justify-center">1</span>
+              <h4 class="font-bold text-white text-sm">Clone Repository từ GitHub:</h4>
+            </div>
+            <div class="code-terminal p-3 rounded-lg text-xs text-cyan-300">
+              git clone https://github.com/nguyenhtra43-sec/waf-security-lab.git<br>
+              cd waf-security-lab
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="w-6 h-6 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 text-xs font-bold flex items-center justify-center">2</span>
+              <h4 class="font-bold text-white text-sm">Khởi động toàn bộ cụm WAF & DVWA bằng Docker Compose:</h4>
+            </div>
+            <div class="code-terminal p-3 rounded-lg text-xs text-emerald-300">
+              docker-compose up -d
+            </div>
+            <p class="text-xs text-slate-400 mt-2">Truy cập ứng dụng tại địa chỉ: <code class="text-white">http://localhost:8080</code> (hoặc cổng Web Preview trên Cloud Shell).</p>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl">
+            <div class="flex items-center gap-3 mb-2">
+              <span class="w-6 h-6 rounded-full bg-purple-950 text-purple-400 border border-purple-800 text-xs font-bold flex items-center justify-center">3</span>
+              <h4 class="font-bold text-white text-sm">Chạy kịch bản kiểm thử bảo mật tự động bằng Python:</h4>
+            </div>
+            <div class="code-terminal p-3 rounded-lg text-xs text-purple-300">
+              python3 scripts/test_security.py
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LIGHTBOX MODAL FOR IMAGE ZOOM -->
+  <div id="image-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm hidden flex items-center justify-center p-4" onclick="closeModal()">
+    <div class="relative max-w-5xl w-full bg-slate-900 rounded-xl overflow-hidden border border-slate-800 shadow-2xl" onclick="event.stopPropagation()">
+      <div class="p-3 bg-slate-950 border-b border-slate-800 flex justify-between items-center text-xs text-slate-300 font-mono">
+        <span id="modal-title">Xem ảnh chi tiết</span>
+        <button onclick="closeModal()" class="text-slate-400 hover:text-white px-2 py-1 rounded bg-slate-800">
+          <i class="fa-solid fa-xmark text-sm"></i> Đóng
+        </button>
+      </div>
+      <div class="p-2 bg-black flex justify-center items-center">
+        <img id="modal-img" src="" alt="Enlarged evidence" class="max-h-[80vh] w-auto object-contain">
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <footer class="bg-slate-950 border-t border-slate-800/80 py-10">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center sm:text-left flex flex-col sm:flex-row items-center justify-between gap-6">
+      <div>
+        <div class="flex items-center justify-center sm:justify-start gap-2">
+          <i class="fa-solid fa-shield-halved text-cyan-400 text-lg"></i>
+          <span class="text-base font-bold text-white">Enterprise WAF Security Lab</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-1">
+          Nghiên cứu & Thực nghiệm bởi <strong class="text-slate-300">Nguyễn Hương Trà</strong> | Chuyên môn An Toàn Thông Tin & SOC Analyst.
+        </p>
+      </div>
+
+      <div class="flex items-center gap-4 text-slate-400 text-sm">
+        <a href="https://github.com/nguyenhtra43-sec/waf-security-lab" target="_blank" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+          <i class="fa-brands fa-github text-base"></i> GitHub Project
+        </a>
+        <span class="text-slate-700">•</span>
+        <a href="mailto:nguyenhtra43@gmail.com" class="hover:text-cyan-400 transition-colors flex items-center gap-1.5">
+          <i class="fa-solid fa-envelope"></i> Liên hệ
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- JAVASCRIPT LOGIC -->
+  <script>
+    // State Variables
+    let currentScenario = 'sqli';
+    let isWAFEnabled = true;
+    let currentCodeTab = 'compose';
+
+    // Preset Data
+    const scenariosData = {
+      sqli: {
+        title: 'Kịch bản 1: SQL Injection (SQLi)',
+        desc: 'Chèn chuỗi logic SQL vào tham số truy vấn nhằm qua mặt mệnh đề xác thực và ép cơ sở dữ liệu trả về toàn bộ dữ liệu bảng người dùng trong DVWA.',
+        endpoint: '/vulnerabilities/sqli/?id=',
+        method: 'GET',
+        rule: 'REQUEST-942-APPLICATION-ATTACK-SQLI (Rule 942100 / 942140 / 949110)',
+        presets: [
+          { name: "DVWA Wildcard Bypass", payload: "%' OR '1'='1" },
+          { name: "Auth Bypass Classic", payload: "' OR '1'='1" },
+          { name: "UNION Select Dump", payload: "' UNION SELECT 1, user, password FROM users #" },
+          { name: "Yêu cầu bình thường", payload: "1" }
+        ],
+        blockedScore: 11,
+        ruleTriggered: 'id: "949110" - Inbound Anomaly Score Exceeded (Score: 11)',
+        vulnerableHtml: `
+          <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs">
+            <div class="border-b pb-2 mb-3 flex items-center justify-between">
+              <span class="font-bold text-red-600 flex items-center gap-1.5">
+                <i class="fa-solid fa-triangle-exclamation"></i> LỖ HỔNG XẢY RA: TOÀN BỘ CƠ SỞ DỮ LIỆU ĐÃ BỊ TRÍCH XUẤT!
+              </span>
+              <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono text-[10px]">HTTP 200 OK</span>
+            </div>
+            <div class="font-mono text-[11px] text-slate-700 mb-2">Query executed: SELECT first_name, last_name FROM users WHERE user_id = '%' OR '1'='1'</div>
+            <div class="space-y-2 bg-white p-3 rounded border border-slate-200">
+              <div class="p-1.5 bg-red-50 border-l-4 border-red-500"><strong class="text-red-700">ID: %' OR '1'='1</strong><br>First name: <span class="font-bold">admin</span> | Surname: <span class="font-bold">admin</span></div>
+              <div class="p-1.5 bg-red-50 border-l-4 border-red-500"><strong class="text-red-700">ID: %' OR '1'='1</strong><br>First name: <span class="font-bold">Gordon</span> | Surname: <span class="font-bold">Brown</span></div>
+              <div class="p-1.5 bg-red-50 border-l-4 border-red-500"><strong class="text-red-700">ID: %' OR '1'='1</strong><br>First name: <span class="font-bold">Hack</span> | Surname: <span class="font-bold">Me</span></div>
+              <div class="p-1.5 bg-red-50 border-l-4 border-red-500"><strong class="text-red-700">ID: %' OR '1'='1</strong><br>First name: <span class="font-bold">Pablo</span> | Surname: <span class="font-bold">Picasso</span></div>
+              <div class="p-1.5 bg-red-50 border-l-4 border-red-500"><strong class="text-red-700">ID: %' OR '1'='1</strong><br>First name: <span class="font-bold">Bob</span> | Surname: <span class="font-bold">Smith</span></div>
+            </div>
+          </div>
+        `
+      },
+      xss: {
+        title: 'Kịch bản 2: Cross-Site Scripting (Reflected XSS)',
+        desc: 'Chèn mã kịch bản JavaScript độc hại vào input người dùng. Khi trình duyệt nạn nhân render phản hồi không được khử khuẩn, mã độc lập tức kích hoạt lấy cắp Cookie hoặc chiếm phiên làm việc.',
+        endpoint: '/vulnerabilities/xss_r/?name=',
+        method: 'GET',
+        rule: 'REQUEST-941-APPLICATION-ATTACK-XSS (Rule 941100 / 941110 / 949110)',
+        presets: [
+          { name: "Alert Script Vector", payload: "<script>alert('XSS_Exploit')</script>" },
+          { name: "Image Onerror Vector", payload: "<img src=x onerror=alert(document.cookie)>" },
+          { name: "SVG Vector", payload: "<svg/onload=confirm('Session_Stolen')>" },
+          { name: "Thẻ HTML an toàn", payload: "<b>Hello World</b>" }
+        ],
+        blockedScore: 8,
+        ruleTriggered: 'id: "941100" - XSS Filter - Category 1: Script Tag Vector Detected',
+        vulnerableHtml: `
+          <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs">
+            <div class="border-b pb-2 mb-3 flex items-center justify-between">
+              <span class="font-bold text-red-600 flex items-center gap-1.5">
+                <i class="fa-solid fa-bug"></i> MÃ JAVASCRIPT ĐÃ THỰC THI TRÊN TRÌNH DUYỆT!
+              </span>
+              <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono text-[10px]">HTTP 200 OK</span>
+            </div>
+            <div class="bg-white p-4 rounded-lg border border-slate-200 text-center">
+              <div class="inline-block p-4 bg-amber-50 border border-amber-300 rounded-lg shadow-md mb-2">
+                <div class="text-amber-800 font-bold text-sm mb-1 flex items-center justify-center gap-1.5">
+                  <i class="fa-solid fa-triangle-exclamation"></i> alert(document.cookie) Executed!
+                </div>
+                <div class="font-mono text-xs text-slate-700 bg-white p-2 rounded border border-amber-200">
+                  PHPSESSID=8e4f1a23c0b56d98e721; security=low
+                </div>
+              </div>
+              <p class="text-slate-500 text-[11px]">Kẻ tấn công có thể gửi cookie này về máy chủ C2 để giả mạo phiên đăng nhập của người dùng.</p>
+            </div>
+          </div>
+        `
+      },
+      brute: {
+        title: 'Kịch bản 3: Tấn công vét cạn (Brute Force Authentication)',
+        desc: 'Sử dụng công cụ tự động gửi hàng loạt cặp thông tin đăng nhập (Username/Password) liên tiếp nhằm tìm ra mật khẩu đúng của tài khoản quản trị viên.',
+        endpoint: '/vulnerabilities/brute/?username=admin&password=',
+        method: 'GET',
+        rule: 'REQUEST-912-DOS-PROTECTION / RATE-LIMIT (Burst Requests Detection)',
+        presets: [
+          { name: "Dictionary Burst (10 req/s)", payload: "pass123&Login=Login" },
+          { name: "Default Credential Test", payload: "password&Login=Login" },
+          { name: "Admin Guess", payload: "admin123&Login=Login" },
+          { name: "Đăng nhập bình thường", payload: "correctpass&Login=Login" }
+        ],
+        blockedScore: 10,
+        ruleTriggered: 'id: "949110" - Request Rate Limit & Anomaly Threshold Breached',
+        vulnerableHtml: `
+          <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs">
+            <div class="border-b pb-2 mb-3 flex items-center justify-between">
+              <span class="font-bold text-red-600 flex items-center gap-1.5">
+                <i class="fa-solid fa-unlock-keyhole"></i> KHÔNG CÓ CƠ CHẾ GIỚI HẠN TẦN SUẤT - MẬT KHẨU ĐÃ BỊ TÌM RA!
+              </span>
+              <span class="bg-red-100 text-red-700 px-2 py-0.5 rounded font-mono text-[10px]">HTTP 200 OK</span>
+            </div>
+            <div class="bg-white p-3 rounded border border-slate-200 space-y-1.5">
+              <div class="font-mono text-[11px] text-slate-500">[Attempt #14] admin:123456 -> 200 OK (Failed)</div>
+              <div class="font-mono text-[11px] text-slate-500">[Attempt #15] admin:qwerty -> 200 OK (Failed)</div>
+              <div class="font-mono text-[11px] text-emerald-700 font-bold bg-emerald-50 p-2 rounded border border-emerald-200">
+                [Attempt #16] admin:password -> 200 OK (SUCCESS! Welcome to the password protected area admin!)
+              </div>
+            </div>
+          </div>
+        `
+      }
+    };
+
+    // Code Snippets Data
+    const codeFiles = {
+      compose: `services:
+  # Lớp ứng dụng mục tiêu (DVWA)
+  vulnerable-web:
+    image: vulnerables/web-dvwa
+    container_name: dvwa-target
+    restart: always
+    environment:
+      - MYSQL_USER=user
+      - MYSQL_PASSWORD=pass
+
+  # Lớp bảo vệ (WAF ModSecurity v3 + Nginx)
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waf-server
+    ports:
+      - "8080:8080" # Ánh xạ cổng 8080 của Host vào 8080 của Container
+    environment:
+      - BACKEND=http://dvwa-target:80 # Trỏ luồng traffic về ứng dụng
+      - PROXY_SSL=off
+      - PORT=8080 # Lệnh quan trọng để Nginx bên trong đổi cổng lắng nghe
+      - PARANOIA=1 # Mức độ kiểm soát nghiêm ngặt cơ bản
+      - ANOMALY_INBOUND_THRESHOLD=5 # Ngưỡng điểm để chặn tấn công
+      - MODSEC_RULE_ENGINE=on
+    depends_on:
+      - vulnerable-web`,
+
+      nginx: `server {
+    listen 8080 default_server;
+    listen [::]:8080 default_server;
+
+    # Cho phép Nginx nạp tệp cấu hình ModSecurity do container tự động sinh ra
+    include /etc/nginx/modsecurity.d/include.conf;
+
+    location / {
+        proxy_pass http://dvwa-target:80;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}`,
+
+      python: `import requests
+
+target_url = "http://localhost:8080"
+
+# Attack Payloads
+sqli_payload = "' OR '1'='1"
+xss_payload = "<script>alert(1)</script>"
+
+print("[+] Testing WAF Defense against Target...")
+
+# 1. Test SQL Injection
+res_sql = requests.get(f"{target_url}/vulnerabilities/sqli/?id={sqli_payload}&Submit=Submit")
+if res_sql.status_code == 403:
+    print("[SUCCESS] SQL Injection blocked by ModSecurity (403 Forbidden)")
+else:
+    print(f"[WARNING] SQLi bypassed! Status code: {res_sql.status_code}")
+
+# 2. Test XSS Attack
+res_xss = requests.get(f"{target_url}/vulnerabilities/xss_r/?name={xss_payload}")
+if res_xss.status_code == 403:
+    print("[SUCCESS] XSS Attack blocked by ModSecurity (403 Forbidden)")
+else:
+    print(f"[WARNING] XSS bypassed! Status code: {res_xss.status_code}")`
+    };
+
+    // Terminal Log Database
+    const initialLogs = [
+      {
+        tag: 'sqli',
+        type: 'error',
+        time: '2026/05/01 09:30:30',
+        content: `2026/05/01 09:30:30 [error] 505#505: *6 [client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 2). Matched "Operator 'Ge' with parameter '5' against variable 'TX:ANOMALY_SCORE' (Value: '11' ) [file "/etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "81"] [id "949110"] [rev ""] [msg "Inbound Anomaly Score Exceeded (Total Score: 11)"] [data ""] [severity "2"] [ver "OWASP_CRS/3.3.9"] [maturity "0"] [accuracy "0"] [tag "modsecurity"] [tag "application-multi"] [tag "language-multi"] [tag "platform-multi"] [tag "attack-generic"] [hostname "127.0.0.1"] [uri "/vulnerabilities/sqli/"] [unique_id "177762783049.179535"] [ref ""], client: 172.18.0.1, server: localhost, request: "GET /vulnerabilities/sqli/?id=%2527+OR+%271%27%3D%271&Submit=Submit HTTP/1.1", host: "127.0.0.1:8080"`
+      },
+      {
+        tag: 'sqli',
+        type: 'info',
+        time: '2026/05/01 09:30:30',
+        content: `[notice] Matched Rule [id "942100"] [msg "SQL Injection Attack Detected via libinjection"] [data "Matched Data: 1'='1 found within ARGS:id: %' OR '1'='1"] [anomaly_score "+5"]`
+      },
+      {
+        tag: 'sqli',
+        type: 'info',
+        time: '2026/05/01 09:30:30',
+        content: `[notice] Matched Rule [id "942140"] [msg "Restricted SQL Character Anomaly Detection (args): %'"] [anomaly_score "+3"]`
+      },
+      {
+        tag: 'xss',
+        type: 'error',
+        time: '2026/05/01 09:35:12',
+        content: `2026/05/01 09:35:12 [error] 505#505: *12 [client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 2). Matched "Operator 'Ge' with parameter '5' against variable 'TX:ANOMALY_SCORE' (Value: '8' ) [file "/etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "81"] [id "949110"] [msg "Inbound Anomaly Score Exceeded (Total Score: 8)"] [uri "/vulnerabilities/xss_r/"] [request: "GET /vulnerabilities/xss_r/?name=%3Cscript%3Ealert(1)%3C/script%3E HTTP/1.1"]`
+      },
+      {
+        tag: 'brute',
+        type: 'error',
+        time: '2026/05/01 09:40:05',
+        content: `2026/05/01 09:40:05 [error] 505#505: *45 [client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 1). Matched "Rate limit breached for IP 172.18.0.1 (Requests > 10 in 5s)" [file "/etc/modsecurity.d/owasp-crs/rules/REQUEST-912-DOS-PROTECTION.conf"] [id "912100"] [uri "/vulnerabilities/brute/"]`
+      }
+    ];
+
+    let logStore = [...initialLogs];
+
+    // Initializer
+    document.addEventListener("DOMContentLoaded", () => {
+      renderScenarioUI();
+      renderLogs('all');
+      switchCode('compose');
+    });
+
+    // Scenario Switcher
+    function switchScenario(scenarioKey) {
+      currentScenario = scenarioKey;
+
+      // Update Tab Styles
+      document.querySelectorAll('.scenario-tab').forEach(tab => {
+        tab.classList.remove('bg-cyan-600', 'text-white', 'shadow');
+        tab.classList.add('text-slate-400');
+      });
+      const activeTab = document.getElementById(`tab-${scenarioKey}`);
+      if (activeTab) {
+        activeTab.classList.add('bg-cyan-600', 'text-white', 'shadow');
+        activeTab.classList.remove('text-slate-400');
+      }
+
+      renderScenarioUI();
+      executeAttackSimulation();
+    }
+
+    // Render Scenario UI
+    function renderScenarioUI() {
+      const data = scenariosData[currentScenario];
+      document.getElementById('scenario-title').innerHTML = `<i class="fa-solid fa-${currentScenario === 'sqli' ? 'database' : currentScenario === 'xss' ? 'code' : 'key'} text-cyan-400"></i> ${data.title}`;
+      document.getElementById('scenario-desc').innerText = data.desc;
+      document.getElementById('target-endpoint').innerText = data.endpoint;
+      document.getElementById('http-method').innerText = data.method;
+      document.getElementById('rule-inspect').innerText = data.rule;
+
+      // Render Presets
+      const presetContainer = document.getElementById('payload-presets');
+      presetContainer.innerHTML = '';
+      data.presets.forEach((preset, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `p-2 rounded text-left text-[11px] font-mono border transition-all ${idx === 0 ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'}`;
+        btn.innerHTML = `<div class="font-semibold truncate">${preset.name}</div><div class="text-[10px] text-slate-500 truncate">${preset.payload}</div>`;
+        btn.onclick = () => {
+          document.getElementById('payload-input').value = preset.payload;
+          document.querySelectorAll('#payload-presets button').forEach(b => {
+            b.className = 'p-2 rounded text-left text-[11px] font-mono border bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200';
+          });
+          btn.className = 'p-2 rounded text-left text-[11px] font-mono border bg-cyan-950/80 border-cyan-700 text-cyan-300';
+          executeAttackSimulation();
+        };
+        presetContainer.appendChild(btn);
+      });
+
+      // Default payload input
+      document.getElementById('payload-input').value = data.presets[0].payload;
+    }
+
+    // Toggle WAF Master Switch
+    function toggleWAF() {
+      isWAFEnabled = !isWAFEnabled;
+      const toggleBtn = document.getElementById('waf-toggle-btn');
+      const toggleCircle = document.getElementById('waf-toggle-circle');
+      const statusText = document.getElementById('waf-status-text');
+
+      if (isWAFEnabled) {
+        toggleBtn.classList.remove('bg-slate-700');
+        toggleBtn.classList.add('bg-emerald-600');
+        toggleCircle.classList.remove('translate-x-1');
+        toggleCircle.classList.add('translate-x-8');
+        statusText.classList.remove('text-rose-400');
+        statusText.classList.add('text-emerald-400');
+        statusText.innerText = 'BẬT (CRS Active)';
+      } else {
+        toggleBtn.classList.remove('bg-emerald-600');
+        toggleBtn.classList.add('bg-slate-700');
+        toggleCircle.classList.remove('translate-x-8');
+        toggleCircle.classList.add('translate-x-1');
+        statusText.classList.remove('text-emerald-400');
+        statusText.classList.add('text-rose-400');
+        statusText.innerText = 'TẮT (Unprotected)';
+      }
+
+      executeAttackSimulation();
+    }
+
+    // Execute Attack Simulation
+    function executeAttackSimulation() {
+      const data = scenariosData[currentScenario];
+      const payload = document.getElementById('payload-input').value.trim();
+      const statusBadge = document.getElementById('status-badge');
+      const latency = document.getElementById('response-latency');
+      const mockupUrl = document.getElementById('mockup-url');
+      const screenBlocked = document.getElementById('screen-blocked');
+      const screenVulnerable = document.getElementById('screen-vulnerable');
+      const scoreText = document.getElementById('score-text');
+      const scoreBar = document.getElementById('score-bar');
+
+      // Random Latency
+      latency.innerText = `${Math.floor(Math.random() * 18) + 8}ms`;
+      mockupUrl.innerText = `http://localhost:8080${data.endpoint}${encodeURIComponent(payload)}`;
+
+      const isNormal = payload === "1" || payload === "<b>Hello World</b>" || payload === "correctpass&Login=Login";
+
+      if (isWAFEnabled && !isNormal) {
+        // BLOCKED BY WAF
+        statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800 flex items-center gap-1';
+        statusBadge.innerHTML = '<i class="fa-solid fa-shield-halved"></i> 403 Forbidden';
+        
+        screenBlocked.classList.remove('hidden');
+        screenVulnerable.classList.add('hidden');
+
+        scoreText.innerText = `${data.blockedScore} / 5 (Vượt ngưỡng)`;
+        scoreText.className = 'font-bold text-rose-400';
+        scoreBar.style.width = '100%';
+        scoreBar.className = 'h-full bg-gradient-to-r from-amber-500 to-rose-600 transition-all duration-500';
+
+        // Add to log store
+        logStore.unshift({
+          tag: currentScenario,
+          type: 'error',
+          time: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          content: `[client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 2). Matched "Operator 'Ge' with parameter '5' against variable 'TX:ANOMALY_SCORE' (Value: '${data.blockedScore}') [id "949110"] [uri "${data.endpoint}"] [request: "${data.method} ${data.endpoint}${payload} HTTP/1.1"]`
+        });
+        renderLogs('all');
+
+      } else {
+        // WAF DISABLED OR NORMAL TRAFFIC -> 200 OK
+        statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1';
+        statusBadge.innerHTML = '<i class="fa-solid fa-check"></i> 200 OK';
+
+        screenBlocked.classList.add('hidden');
+        screenVulnerable.classList.remove('hidden');
+
+        if (isNormal) {
+          scoreText.innerText = '0 / 5 (An toàn)';
+          scoreText.className = 'font-bold text-emerald-400';
+          scoreBar.style.width = '10%';
+          scoreBar.className = 'h-full bg-emerald-500 transition-all duration-500';
+          screenVulnerable.innerHTML = `
+            <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs">
+              <div class="text-emerald-700 font-bold mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check"></i> Yêu Cầu Hợp Lệ Được Phục Vụ Thành Công (200 OK)
+              </div>
+              <p class="text-slate-600">ID người dùng tìm thấy: 1. Hệ thống vận hành bình thường không ghi nhận bất thường nào.</p>
+            </div>
+          `;
+        } else {
+          scoreText.innerText = 'N/A (Tường lửa đang tắt)';
+          scoreText.className = 'font-bold text-slate-500';
+          scoreBar.style.width = '0%';
+          scoreBar.className = 'h-full bg-slate-700';
+          screenVulnerable.innerHTML = data.vulnerableHtml;
+        }
+      }
+    }
+
+    // Render Terminal Logs
+    function renderLogs(filter) {
+      const terminal = document.getElementById('terminal-body');
+      terminal.innerHTML = '';
+
+      const filtered = logStore.filter(log => filter === 'all' || log.tag === filter);
+
+      if (filtered.length === 0) {
+        terminal.innerHTML = '<div class="text-slate-500 text-xs italic">[Không có log nào phù hợp với bộ lọc hiện tại]</div>';
+        return;
+      }
+
+      filtered.forEach(log => {
+        const row = document.createElement('div');
+        row.className = 'p-2 rounded bg-black/40 border border-slate-900/60 font-mono text-[11px] break-words';
+        
+        if (log.type === 'error') {
+          row.innerHTML = `<span class="text-rose-400 font-bold">[DENIED 403]</span> <span class="text-slate-400">${log.time}</span> <span class="text-slate-200">${highlightLog(log.content)}</span>`;
+        } else {
+          row.innerHTML = `<span class="text-cyan-400 font-bold">[RULE MATCH]</span> <span class="text-slate-400">${log.time}</span> <span class="text-slate-300">${highlightLog(log.content)}</span>`;
+        }
+        terminal.appendChild(row);
+      });
+    }
+
+    function highlightLog(text) {
+      return text
+        .replace(/id "(\d+)"/g, 'id "<span class="text-amber-400 font-bold">$1</span>"')
+        .replace(/Value: '(\d+)'/g, 'Value: \'<span class="text-rose-400 font-bold">$1</span>\'')
+        .replace(/code 403/g, '<span class="text-rose-400 font-bold">code 403</span>')
+        .replace(/phase 2/g, '<span class="text-cyan-400">phase 2</span>');
+    }
+
+    function filterLogs(filter) {
+      document.querySelectorAll('.log-filter-btn').forEach(btn => {
+        btn.classList.remove('bg-slate-800', 'text-white');
+        btn.classList.add('bg-slate-900', 'text-slate-400');
+      });
+      event.target.classList.add('bg-slate-800', 'text-white');
+      renderLogs(filter);
+    }
+
+    function clearTerminalLogs() {
+      logStore = [];
+      renderLogs('all');
+    }
+
+    function injectLog(type) {
+      if (type === 'sqli') {
+        currentScenario = 'sqli';
+        document.getElementById('payload-input').value = "%' OR '1'='1";
+      } else if (type === 'xss') {
+        currentScenario = 'xss';
+        document.getElementById('payload-input').value = "<script>alert(1)</script>";
+      } else {
+        currentScenario = 'sqli';
+        document.getElementById('payload-input').value = "1";
+      }
+      isWAFEnabled = true;
+      executeAttackSimulation();
+      scrollToTerminal();
+    }
+
+    function scrollToTerminal() {
+      document.getElementById('logs').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // Code Tab Switcher
+    function switchCode(tabKey) {
+      currentCodeTab = tabKey;
+      document.querySelectorAll('.code-tab').forEach(tab => {
+        tab.className = 'code-tab px-3 py-1.5 rounded-lg text-xs font-mono font-semibold text-slate-400 hover:text-white';
+      });
+      const active = document.getElementById(`code-tab-${tabKey}`);
+      if (active) {
+        active.className = 'code-tab px-3 py-1.5 rounded-lg text-xs font-mono font-semibold bg-cyan-950 text-cyan-300 border border-cyan-800';
+      }
+      document.getElementById('code-block').innerText = codeFiles[tabKey];
+    }
+
+    function copyCurrentCode() {
+      const code = codeFiles[currentCodeTab];
+      navigator.clipboard.writeText(code).then(() => {
+        const btnText = document.getElementById('copy-btn-text');
+        btnText.innerText = 'Đã sao chép!';
+        setTimeout(() => { btnText.innerText = 'Sao chép code'; }, 2000);
+      });
+    }
+
+    // Modal Lightbox
+    function openModal(imageSrc) {
+      document.getElementById('modal-img').src = imageSrc;
+      document.getElementById('modal-title').innerText = imageSrc;
+      document.getElementById('image-modal').classList.remove('hidden');
+    }
+
+    function closeModal() {
+      document.getElementById('image-modal').classList.add('hidden');
+    }
+  </script>
+</body>
+</html>
