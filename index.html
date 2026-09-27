@@ -332,10 +332,12 @@
             </div>
 
             <!-- Launch Button -->
-            <button id="send-attack-btn" onclick="executeAttackSimulation()"
-                    class="w-full py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2">
-              <i class="fa-solid fa-paper-plane"></i>
-              <span>Gửi Yêu Cầu / Thực Thi Tấn Công</span>
+            <button id="send-attack-btn" type="button" onclick="executeAttackSimulation()"
+                    class="w-full py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-sm transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer">
+              <span id="send-btn-text" class="flex items-center gap-2">
+                <i class="fa-solid fa-paper-plane"></i>
+                <span>Gửi Yêu Cầu / Thực Thi Tấn Công</span>
+              </span>
             </button>
           </div>
 

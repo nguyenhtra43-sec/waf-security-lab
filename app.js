@@ -7,6 +7,7 @@
 let currentScenario = 'sqli';
 let isWAFEnabled = true;
 let currentCodeTab = 'compose';
+let isExecuting = false;
 
 // 3 Attack Scenarios Database
 const scenariosData = {
@@ -49,7 +50,7 @@ const scenariosData = {
   xss: {
     key: 'xss',
     title: 'Kịch bản 2: Cross-Site Scripting (Reflected XSS)',
-    desc: 'Chèn mã JavaScript độc hại vào form tìm kiếm. Do ứng dụng không lọc dữ liệu đầu ra, trình duyệt nạn nhân tự động thực thi script và rò rỉ cookie phiên làm việc.',
+    desc: 'Chèn mã JavaScript độc hại vào form tìm kiếm. Do ứng dụng không khử khuẩn dữ liệu đầu ra, trình duyệt nạn nhân tự động thực thi script và rò rỉ cookie phiên làm việc.',
     endpoint: '/vulnerabilities/xss_r/?name=',
     method: 'GET',
     rule: 'REQUEST-941-APPLICATION-ATTACK-XSS (Rule 941100 / 941110 / 949110)',
@@ -219,7 +220,7 @@ const initialLogs = [
 let logStore = [...initialLogs];
 
 // ----------------------------------------------------
-// UI FUNCTIONS
+// UI FUNCTIONS & EVENT HANDLERS
 // ----------------------------------------------------
 
 // Initialize on page load
@@ -228,6 +229,25 @@ document.addEventListener("DOMContentLoaded", () => {
   updateToggleUI();
   renderLogs('all');
   switchCode('compose');
+
+  // Listen for Enter key inside payload input
+  const inputEl = document.getElementById('payload-input');
+  if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        executeAttackSimulation();
+      }
+    });
+
+    // When typing custom payload, update standby state
+    inputEl.addEventListener('input', () => {
+      setPendingState('payload');
+    });
+  }
+
+  // Execute initial baseline request on page load so visitor sees live state immediately
+  executeAttackSimulation(true);
 });
 
 // Switch Scenario (sqli | xss | brute)
@@ -249,7 +269,7 @@ function switchScenario(scenarioKey) {
   });
 
   renderScenarioUI();
-  executeAttackSimulation();
+  setPendingState('scenario');
 }
 
 // Render Scenario UI Details
@@ -294,7 +314,7 @@ function renderScenarioUI() {
         });
         btn.className = 'p-2 rounded text-left text-[11px] font-mono border bg-cyan-950/80 border-cyan-700 text-cyan-300 cursor-pointer';
 
-        executeAttackSimulation();
+        setPendingState('preset');
       };
       presetContainer.appendChild(btn);
     });
@@ -311,7 +331,7 @@ function renderScenarioUI() {
 function toggleWAF() {
   isWAFEnabled = !isWAFEnabled;
   updateToggleUI();
-  executeAttackSimulation();
+  setPendingState('waf');
 }
 
 function updateToggleUI() {
@@ -334,8 +354,8 @@ function updateToggleUI() {
   }
 }
 
-// Execute Simulation
-function executeAttackSimulation() {
+// Set Standby / Pending State (Invites user to press "Gửi Yêu Cầu")
+function setPendingState(triggerReason) {
   const data = scenariosData[currentScenario];
   const inputEl = document.getElementById('payload-input');
   const payload = inputEl ? inputEl.value.trim() : '';
@@ -343,111 +363,230 @@ function executeAttackSimulation() {
   const statusBadge = document.getElementById('status-badge');
   const latency = document.getElementById('response-latency');
   const mockupUrl = document.getElementById('mockup-url');
-  const screenBlocked = document.getElementById('screen-blocked');
-  const screenVulnerable = document.getElementById('screen-vulnerable');
+  const mockupContent = document.getElementById('mockup-content');
+
+  if (latency) latency.innerText = 'Chờ gửi request...';
+  if (mockupUrl) mockupUrl.innerText = `http://localhost:8080${data.endpoint}${encodeURIComponent(payload)}`;
+
+  // Update Status Badge to Standby / Pending
+  if (statusBadge) {
+    statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-amber-950 text-amber-300 border border-amber-800 flex items-center gap-1.5 shadow-sm';
+    statusBadge.innerHTML = '<i class="fa-solid fa-clock animate-pulse"></i> Chờ Phát Lệnh (Pending)';
+  }
+
+  // Descriptions according to reason
+  let reasonText = '';
+  if (triggerReason === 'waf') {
+    reasonText = `Trạng thái Tường Lửa vừa đổi: <strong class="${isWAFEnabled ? 'text-emerald-400' : 'text-rose-400'}">${isWAFEnabled ? 'ĐÃ BẬT (ModSecurity Active)' : 'ĐÃ TẮT (Không bảo vệ)'}</strong>`;
+  } else if (triggerReason === 'scenario') {
+    reasonText = `Kịch bản kiểm thử: <strong class="text-cyan-400">${data.title}</strong>`;
+  } else {
+    reasonText = `Payload tùy biến đã cập nhật: <code class="text-cyan-300 font-mono">${escapeHtml(payload)}</code>`;
+  }
+
+  if (mockupContent) {
+    mockupContent.innerHTML = `
+      <div class="text-center py-10 px-4 w-full flex flex-col items-center justify-center animate-fadeIn">
+        <div class="w-14 h-14 rounded-2xl bg-slate-800/90 border border-slate-700 text-cyan-400 flex items-center justify-center text-2xl mb-3 shadow-lg shadow-cyan-950/40">
+          <i class="fa-solid fa-paper-plane animate-bounce"></i>
+        </div>
+        <h4 class="text-base font-bold text-white mb-1">Cấu Hình Đã Sẵn Sàng Gửi Đi</h4>
+        <div class="text-xs text-slate-400 max-w-md mx-auto mb-4 bg-slate-950/70 p-3 rounded-lg border border-slate-800/80 font-mono text-left space-y-1">
+          <div><span class="text-slate-500">Môi trường:</span> ${reasonText}</div>
+          <div><span class="text-slate-500">Mục tiêu:</span> <span class="text-slate-300">${data.endpoint}</span></div>
+          <div class="truncate"><span class="text-slate-500">Gói tin:</span> <span class="text-amber-300 font-bold">${escapeHtml(payload)}</span></div>
+        </div>
+        <p class="text-xs text-slate-400 mb-4 max-w-sm">
+          Nhấn nút <strong>"Gửi Yêu Cầu / Thực Thi Tấn Công"</strong> bên dưới (hoặc bấm <strong>Enter</strong>) để bắn payload qua Proxy và quan sát phản hồi từ WAF & DVWA.
+        </p>
+        <button type="button" onclick="executeAttackSimulation()" 
+                class="px-5 py-2.5 rounded-lg bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-xs shadow-lg shadow-cyan-500/25 flex items-center gap-2 cursor-pointer transform hover:scale-105 transition-all">
+          <i class="fa-solid fa-bolt"></i> Bắn Gói Tin Kiểm Thử Ngay
+        </button>
+      </div>
+    `;
+  }
+
+  // Slight pulse highlight on the main action button
+  const sendBtn = document.getElementById('send-attack-btn');
+  if (sendBtn) {
+    sendBtn.classList.add('ring-2', 'ring-cyan-400');
+    setTimeout(() => {
+      sendBtn.classList.remove('ring-2', 'ring-cyan-400');
+    }, 1200);
+  }
+}
+
+// Execute Attack Simulation
+function executeAttackSimulation(isInitial = false) {
+  if (isExecuting) return;
+
+  const data = scenariosData[currentScenario];
+  const inputEl = document.getElementById('payload-input');
+  const payload = inputEl ? inputEl.value.trim() : '';
+
+  const sendBtn = document.getElementById('send-attack-btn');
+  const sendBtnText = document.getElementById('send-btn-text');
+  const mockupContent = document.getElementById('mockup-content');
+  const statusBadge = document.getElementById('status-badge');
+  const latency = document.getElementById('response-latency');
+  const mockupUrl = document.getElementById('mockup-url');
   const scoreText = document.getElementById('score-text');
   const scoreBar = document.getElementById('score-bar');
 
-  // Random Latency simulation
-  if (latency) latency.innerText = `${Math.floor(Math.random() * 15) + 10}ms`;
-  if (mockupUrl) mockupUrl.innerText = `http://localhost:8080${data.endpoint}${encodeURIComponent(payload)}`;
-
-  const isNormal = payload === "1" || payload === "<b>Hello World</b>" || payload === "correctpass&Login=Login";
-
-  if (isWAFEnabled && !isNormal) {
-    // ----------------------------------------
-    // CASE 1: BLOCKED BY WAF (403 FORBIDDEN)
-    // ----------------------------------------
-    if (statusBadge) {
-      statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800 flex items-center gap-1';
-      statusBadge.innerHTML = '<i class="fa-solid fa-shield-halved"></i> 403 Forbidden';
+  // If triggered by button, show active loading state
+  if (!isInitial) {
+    isExecuting = true;
+    if (sendBtn) {
+      sendBtn.disabled = true;
+      sendBtn.classList.add('opacity-75', 'cursor-wait');
+    }
+    if (sendBtnText) {
+      sendBtnText.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin mr-1.5"></i> Đang truyền gói tin qua Nginx Proxy...';
     }
 
-    if (screenBlocked) {
-      screenBlocked.classList.remove('hidden');
-      // Update block screen with scenario-specific rule and score
-      screenBlocked.innerHTML = `
-        <div class="text-center py-6 px-4">
-          <div class="w-16 h-16 mx-auto rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-400 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-rose-900/30">
-            <i class="fa-solid fa-ban"></i>
+    if (mockupContent) {
+      mockupContent.innerHTML = `
+        <div class="text-center py-12 px-4 w-full flex flex-col items-center justify-center">
+          <div class="w-14 h-14 rounded-2xl bg-cyan-950/80 border border-cyan-800 text-cyan-400 flex items-center justify-center text-2xl mb-4 shadow-lg animate-spin">
+            <i class="fa-solid fa-shield-halved"></i>
           </div>
-          <h3 class="text-xl font-bold text-white mb-1">403 Forbidden - Access Denied</h3>
-          <p class="text-xs font-mono text-rose-300 mb-3">Tường Lửa Tầng Ứng Dụng (WAF) Đã Ngăn Chặn Yêu Cầu Này</p>
-          <div class="max-w-md mx-auto bg-slate-950 p-3 rounded-lg border border-slate-800 text-left text-xs font-mono space-y-1.5 text-slate-400">
-            <div><strong class="text-slate-300">WAF Engine:</strong> ModSecurity v3 / OWASP CRS 3.3.10</div>
-            <div><strong class="text-slate-300">Blocking Rule ID:</strong> <span class="text-amber-400 font-bold">${data.ruleId}</span> (${data.ruleDetails})</div>
-            <div><strong class="text-slate-300">File Quy Tắc:</strong> <span class="text-cyan-400">${data.ruleCategory}</span></div>
-            <div><strong class="text-slate-300">Điểm Đánh Giá:</strong> <span class="text-rose-400 font-bold">${data.blockedScore}</span> (Ngưỡng cho phép: 5)</div>
-            <div><strong class="text-slate-300">Hành động:</strong> Giao dịch bị hủy ngay tại Phase 2 trước khi tới DVWA Backend.</div>
+          <h4 class="text-sm font-bold text-white mb-1.5">ModSecurity v3 Đang Kiểm Tra Gói Tin L7...</h4>
+          <p class="text-[11px] font-mono text-cyan-300">Phase 1: Header Rules &rarr; Phase 2: libinjection SQLi/XSS Analysis</p>
+          <div class="w-48 bg-slate-800 h-1.5 rounded-full overflow-hidden mt-3">
+            <div class="h-full bg-cyan-400 animate-pulse" style="width: 75%;"></div>
           </div>
         </div>
       `;
     }
+  }
 
-    if (screenVulnerable) screenVulnerable.classList.add('hidden');
+  // Simulation delay (280ms) for realistic network latency
+  const delay = isInitial ? 0 : 280;
 
-    if (scoreText) {
-      scoreText.innerText = `${data.blockedScore} / 5 (Vượt ngưỡng)`;
-      scoreText.className = 'font-bold text-rose-400';
+  setTimeout(() => {
+    isExecuting = false;
+
+    // Restore send button
+    if (sendBtn) {
+      sendBtn.disabled = false;
+      sendBtn.classList.remove('opacity-75', 'cursor-wait');
     }
-    if (scoreBar) {
-      scoreBar.style.width = '100%';
-      scoreBar.style.backgroundColor = '#e11d48';
-    }
-
-    // Add entry to terminal log
-    logStore.unshift({
-      tag: currentScenario,
-      type: 'error',
-      time: new Date().toISOString().replace('T', ' ').substring(0, 19),
-      content: `[client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 2). Matched "Operator 'Ge' with parameter '5' against variable 'TX:ANOMALY_SCORE' (Value: '${data.blockedScore}' ) [file "/etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "81"] [id "${data.ruleId}"] [msg "${data.ruleDetails}"] [uri "${data.endpoint}"] [request: "${data.method} ${data.endpoint}${payload} HTTP/1.1"]`
-    });
-    renderLogs('all');
-
-  } else {
-    // ----------------------------------------
-    // CASE 2: WAF OFF OR NORMAL BENIGN REQUEST (200 OK)
-    // ----------------------------------------
-    if (statusBadge) {
-      statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1';
-      statusBadge.innerHTML = '<i class="fa-solid fa-check"></i> 200 OK';
+    if (sendBtnText) {
+      sendBtnText.innerHTML = '<span>Gửi Yêu Cầu / Thực Thi Tấn Công</span>';
     }
 
-    if (screenBlocked) screenBlocked.classList.add('hidden');
+    // Set Latency
+    const currentLatency = Math.floor(Math.random() * 15) + 12;
+    if (latency) latency.innerText = `${currentLatency}ms`;
+    if (mockupUrl) mockupUrl.innerText = `http://localhost:8080${data.endpoint}${encodeURIComponent(payload)}`;
 
-    if (screenVulnerable) {
-      screenVulnerable.classList.remove('hidden');
+    const isNormal = payload === "1" || payload === "<b>Hello World</b>" || payload === "correctpass&Login=Login";
 
-      if (isNormal) {
-        if (scoreText) {
-          scoreText.innerText = '0 / 5 (An toàn)';
-          scoreText.className = 'font-bold text-emerald-400';
-        }
-        if (scoreBar) {
-          scoreBar.style.width = '8%';
-          scoreBar.style.backgroundColor = '#10b981';
-        }
-        screenVulnerable.innerHTML = `
-          <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs">
-            <div class="text-emerald-700 font-bold mb-2 flex items-center gap-1.5">
-              <i class="fa-solid fa-circle-check"></i> Yêu Cầu Hợp Lệ Được Phục Vụ Thành Công (200 OK)
+    if (isWAFEnabled && !isNormal) {
+      // ----------------------------------------
+      // CASE 1: BLOCKED BY WAF (403 FORBIDDEN)
+      // ----------------------------------------
+      if (statusBadge) {
+        statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800 flex items-center gap-1 shadow-sm';
+        statusBadge.innerHTML = '<i class="fa-solid fa-shield-halved"></i> 403 Forbidden';
+      }
+
+      if (mockupContent) {
+        mockupContent.innerHTML = `
+          <div class="text-center py-6 px-4 w-full animate-fadeIn">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-rose-950/80 border border-rose-800 text-rose-400 flex items-center justify-center text-3xl mb-4 shadow-lg shadow-rose-900/30">
+              <i class="fa-solid fa-ban"></i>
             </div>
-            <p class="text-slate-600">Yêu cầu không chứa cú pháp độc hại. Hệ thống vận hành bình thường.</p>
+            <h3 class="text-xl font-bold text-white mb-1">403 Forbidden - Access Denied</h3>
+            <p class="text-xs font-mono text-rose-300 mb-3">Tường Lửa Tầng Ứng Dụng (WAF) Đã Ngăn Chặn Yêu Cầu Này</p>
+            <div class="max-w-md mx-auto bg-slate-950 p-3 rounded-lg border border-slate-800 text-left text-xs font-mono space-y-1.5 text-slate-400">
+              <div><strong class="text-slate-300">WAF Engine:</strong> ModSecurity v3 / OWASP CRS 3.3.10</div>
+              <div><strong class="text-slate-300">Blocking Rule ID:</strong> <span class="text-amber-400 font-bold">${data.ruleId}</span> (${data.ruleDetails})</div>
+              <div><strong class="text-slate-300">File Quy Tắc:</strong> <span class="text-cyan-400">${data.ruleCategory}</span></div>
+              <div><strong class="text-slate-300">Điểm Đánh Giá:</strong> <span class="text-rose-400 font-bold">${data.blockedScore}</span> (Ngưỡng cho phép: 5)</div>
+              <div><strong class="text-slate-300">Hành động:</strong> Giao dịch bị hủy ngay tại Phase 2 trước khi tới DVWA Backend.</div>
+            </div>
           </div>
         `;
-      } else {
-        if (scoreText) {
-          scoreText.innerText = 'N/A (Tường lửa đang tắt)';
-          scoreText.className = 'font-bold text-slate-500';
+      }
+
+      if (scoreText) {
+        scoreText.innerText = `${data.blockedScore} / 5 (Vượt ngưỡng)`;
+        scoreText.className = 'font-bold text-rose-400';
+      }
+      if (scoreBar) {
+        scoreBar.style.width = '100%';
+        scoreBar.style.backgroundColor = '#e11d48';
+      }
+
+      // Add entry to terminal log
+      if (!isInitial) {
+        const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        logStore.unshift({
+          tag: currentScenario,
+          type: 'error',
+          time: now,
+          isNew: true,
+          content: `[client 172.18.0.1] ModSecurity: Access denied with code 403 (phase 2). Matched "Operator 'Ge' with parameter '5' against variable 'TX:ANOMALY_SCORE' (Value: '${data.blockedScore}' ) [file "/etc/modsecurity.d/owasp-crs/rules/REQUEST-949-BLOCKING-EVALUATION.conf"] [line "81"] [id "${data.ruleId}"] [msg "${data.ruleDetails}"] [uri "${data.endpoint}"] [request: "${data.method} ${data.endpoint}${payload} HTTP/1.1"]`
+        });
+        renderLogs('all');
+      }
+
+    } else {
+      // ----------------------------------------
+      // CASE 2: WAF OFF OR NORMAL BENIGN REQUEST (200 OK)
+      // ----------------------------------------
+      if (statusBadge) {
+        statusBadge.className = 'px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800 flex items-center gap-1 shadow-sm';
+        statusBadge.innerHTML = '<i class="fa-solid fa-check"></i> 200 OK';
+      }
+
+      if (mockupContent) {
+        if (isNormal) {
+          if (scoreText) {
+            scoreText.innerText = '0 / 5 (An toàn)';
+            scoreText.className = 'font-bold text-emerald-400';
+          }
+          if (scoreBar) {
+            scoreBar.style.width = '8%';
+            scoreBar.style.backgroundColor = '#10b981';
+          }
+          mockupContent.innerHTML = `
+            <div class="w-full bg-[#f8fafc] text-slate-900 p-4 rounded border border-slate-300 font-sans text-xs animate-fadeIn">
+              <div class="text-emerald-700 font-bold mb-2 flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check"></i> Yêu Cầu Hợp Lệ Được Phục Vụ Thành Công (200 OK)
+              </div>
+              <p class="text-slate-600">Yêu cầu không chứa cú pháp độc hại. Hệ thống vận hành bình thường.</p>
+            </div>
+          `;
+        } else {
+          if (scoreText) {
+            scoreText.innerText = 'N/A (Tường lửa đang tắt)';
+            scoreText.className = 'font-bold text-slate-500';
+          }
+          if (scoreBar) {
+            scoreBar.style.width = '0%';
+            scoreBar.style.backgroundColor = '#475569';
+          }
+          mockupContent.innerHTML = `<div class="w-full animate-fadeIn">${data.vulnerableHtml}</div>`;
         }
-        if (scoreBar) {
-          scoreBar.style.width = '0%';
-          scoreBar.style.backgroundColor = '#475569';
-        }
-        screenVulnerable.innerHTML = data.vulnerableHtml;
+      }
+
+      // Add 200 OK entry to terminal log
+      if (!isInitial) {
+        const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        logStore.unshift({
+          tag: currentScenario,
+          type: 'info',
+          time: now,
+          isNew: true,
+          content: `[notice] [client 172.18.0.1] ${!isWAFEnabled ? 'WAF BYPASS (Disabled)' : 'BENIGN TRAFFIC'}: Request passed directly to backend dvwa-target:80 -> Status: 200 OK [request: "${data.method} ${data.endpoint}${payload} HTTP/1.1"]`
+        });
+        renderLogs('all');
       }
     }
-  }
+  }, delay);
 }
 
 // Render Terminal Logs
@@ -463,9 +602,13 @@ function renderLogs(filter) {
     return;
   }
 
-  filtered.forEach(log => {
+  filtered.forEach((log, index) => {
     const row = document.createElement('div');
-    row.className = 'p-2 rounded bg-black/40 border border-slate-900/60 font-mono text-[11px] break-words';
+    // Highlight the newest entry
+    const isLatest = index === 0 && log.isNew;
+    row.className = `p-2 rounded font-mono text-[11px] break-words transition-all duration-300 ${
+      isLatest ? 'bg-cyan-950/70 border border-cyan-500/80 shadow-md shadow-cyan-900/40' : 'bg-black/40 border border-slate-900/60'
+    }`;
     
     if (log.type === 'error') {
       row.innerHTML = `<span class="text-rose-400 font-bold">[DENIED 403]</span> <span class="text-slate-400">${log.time}</span> <span class="text-slate-200">${highlightLog(log.content)}</span>`;
